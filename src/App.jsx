@@ -32,6 +32,7 @@ const VolunteerHub = () => {
   // This runs ONLY ONCE when the app first loads
   useEffect(() => {
     // Check if a user is ALREADY logged in (e.g., from a previous session)
+    // This stops the buggy "listener" from running
     const user = auth.currentUser;
     if (user) {
       setCurrentUser({
@@ -40,6 +41,7 @@ const VolunteerHub = () => {
         name: user.displayName || user.email.split('@')[0]
       });
     }
+    // We are done loading, even if there's no user
     setLoading(false);
   }, []); // <-- Empty dependency array. Runs ONCE.
 
@@ -133,7 +135,6 @@ const VolunteerHub = () => {
       setAuthMode('login');
       return;
     }
-    // (Rest of the function is the same...)
     const isRegistered = event.volunteers.includes(currentUser.uid);
     const isFull = event.volunteers.length >= event.maxVolunteers;
 
@@ -162,7 +163,6 @@ const VolunteerHub = () => {
       setShowAuthModal(true);
       return;
     }
-    // (Rest of the function is the same...)
     try {
       await addDoc(eventsCollectionRef, {
         ...eventData,

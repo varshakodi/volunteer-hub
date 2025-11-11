@@ -9,7 +9,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  updateProfile, // <-- 1. IMPORT FOR USERNAME
+  sendPasswordResetEmail // <-- 1. IMPORT FOR FORGOT PASSWORD
 } from "firebase/auth";
 import { Calendar, MapPin, Users, Plus, LogIn, LogOut, User, CheckCircle } from 'lucide-react';
 
@@ -23,21 +25,21 @@ const VolunteerHub = () => {
   const [authForm, setAuthForm] = useState({ email: '', password: '', name: '' });
 
   // --- Data Collection Reference ---
-  // This tells Firebase which "table" to use
   const eventsCollectionRef = collection(db, "volunteer-events");
 
   // --- UseEffect Hooks ---
 
   // 1. Check if user is logged in
   useEffect(() => {
-    // This runs when the app loads and listens for auth changes
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         // User is logged in
         setCurrentUser({
           uid: user.uid,
           email: user.email,
-          name: user.email.split('@')[0] // Simple name
+          // --- 2. USERNAME FIX ---
+          // Reads their real name, or falls back to the email split
+          name: user.displayName || user.email.split('@')[0]
         });
       } else {
         // User is signed out
@@ -50,8 +52,6 @@ const VolunteerHub = () => {
 
   // 2. Load events from Firebase
   useEffect(() => {
-    // onSnapshot is a real-time listener!
-    // It auto-updates your site when the database changes.
     const unsubscribe = onSnapshot(eventsCollectionRef, (snapshot) => {
       const loadedEvents = snapshot.docs.map(doc => ({
         ...doc.data(),
@@ -68,8 +68,17 @@ const VolunteerHub = () => {
   const handleAuth = async () => {
     try {
       if (authMode === 'signup') {
-        await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
+        // 1. Create the user
+        const userCredential = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
+        
+        // --- 3. USERNAME FIX ---
+        // 2. Update their profile with the name
+        await updateProfile(userCredential.user, {
+          displayName: authForm.name
+        });
+
       } else {
+        // Just sign in
         await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
       }
       setShowAuthModal(false);
@@ -86,6 +95,23 @@ const VolunteerHub = () => {
       setCurrentPage('home');
     } catch (error) {
       console.error('Logout error:', error);
+    }
+  };
+
+  // --- 4. FORGOT PASSWORD FUNCTION ---
+  const handleForgotPassword = async () => {
+    if (!authForm.email) {
+      alert('Please enter your email in the email field first.');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, authForm.email);
+      alert('Password reset email sent! Check your inbox.');
+      setShowAuthModal(false);
+      setAuthForm({ email: '', password: '', name: '' });
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      alert('Failed to send reset email: ' + error.message);
     }
   };
 
@@ -111,9 +137,7 @@ const VolunteerHub = () => {
     }
 
     try {
-      // Get the specific document to update
       const eventDocRef = doc(db, "volunteer-events", eventId);
-      // Update the 'volunteers' array by adding the user's ID
       await updateDoc(eventDocRef, {
         volunteers: arrayUnion(currentUser.uid)
       });
@@ -130,11 +154,10 @@ const VolunteerHub = () => {
       return;
     }
     try {
-      // Add a new document to the 'volunteer-events' collection
       await addDoc(eventsCollectionRef, {
         ...eventData,
-        maxVolunteers: parseInt(eventData.maxVolunteers, 10), // Ensure it's a number
-        volunteers: [], // Start with an empty array
+        maxVolunteers: parseInt(eventData.maxVolunteers, 10),
+        volunteers: [],
         createdBy: currentUser.uid,
       });
       setCurrentPage('events');
@@ -183,7 +206,6 @@ const VolunteerHub = () => {
             {events.map(event => {
               const isRegistered = currentUser && event.volunteers.includes(currentUser.uid);
               const isFull = event.volunteers.length >= event.maxVolunteers;
-              // --- THIS IS A SMALL BUG FIX ---
               const spotsLeft = event.maxVolunteers - event.volunteers.length;
               
               return (
@@ -191,7 +213,6 @@ const VolunteerHub = () => {
                   <h3>{event.title}</h3>
                   <div className="space-y-2">
                     <p><strong>Organizer:</strong> {event.organizer}</p>
-                    {/* Add 'T00:00:00' to fix date parsing issues across browsers */}
                     <p><Calendar size={16} className="icon" /> {new Date(event.date + 'T00:00:00').toLocaleDateString()}</p>
                     <p><MapPin size={16} className="icon" /> {event.location}</p>
                     <p><Users size={16} className="icon" /> {spotsLeft} spots left ({event.volunteers.length}/{event.maxVolunteers})</p>
@@ -355,10 +376,28 @@ const VolunteerHub = () => {
                 {authMode === 'login' ? 'Login' : 'Sign Up'}
               </button>
             </div>
-            <button onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}>
-              {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Login'}
+            
+            <hr style={{ margin: '1rem 0' }} />
+
+            {/* --- 5. FORGOT PASSWORD & SWITCH AUTH BUTTONS --- */}
+            {authMode === 'login' ? (
+              <>
+                <button onClick={handleForgotPassword} style={{ background: 'none', color: '#007bff', border: 'none', cursor: 'pointer', padding: '5px' }}>
+                  Forgot Password?
+                </button>
+                <button onClick={() => setAuthMode('signup')} style={{ background: 'none', color: '#007bff', border: 'none', cursor: 'pointer', padding: '5px' }}>
+                  Don't have an account? Sign up
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setAuthMode('login')} style={{ background: 'none', color: '#007bff', border: 'none', cursor: 'pointer', padding: '5px' }}>
+                Already have an account? Login
+              </button>
+            )}
+            
+            <button onClick={() => setShowAuthModal(false)} style={{ background: '#6c757d', marginTop: '10px' }} className="btn">
+              Cancel
             </button>
-            <button onClick={() => setShowAuthModal(false)}>Cancel</button>
           </div>
         </div>
       )}

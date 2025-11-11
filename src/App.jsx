@@ -9,7 +9,6 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged,
   updateProfile,
   sendPasswordResetEmail
 } from "firebase/auth";
@@ -29,25 +28,20 @@ const VolunteerHub = () => {
 
   // --- UseEffect Hooks ---
 
-  // 1. Check if user is logged in
+  // 1. THIS IS THE NEW AUTH LOGIC
+  // This runs ONLY ONCE when the app first loads
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        // User is logged in
-        setCurrentUser({
-          uid: user.uid,
-          email: user.email,
-          // Reads their real name, or falls back to the email split
-          name: user.displayName || user.email.split('@')[0]
-        });
-      } else {
-        // User is signed out
-        setCurrentUser(null);
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe(); // Cleanup
-  }, []);
+    // Check if a user is ALREADY logged in (e.g., from a previous session)
+    const user = auth.currentUser;
+    if (user) {
+      setCurrentUser({
+        uid: user.uid,
+        email: user.email,
+        name: user.displayName || user.email.split('@')[0]
+      });
+    }
+    setLoading(false);
+  }, []); // <-- Empty dependency array. Runs ONCE.
 
   // 2. Load events from Firebase
   useEffect(() => {
@@ -64,43 +58,51 @@ const VolunteerHub = () => {
 
   // --- Auth Functions (Real) ---
   
+  // 2. THIS IS THE NEW AUTH LOGIC
+  // We manually set the user state on login/signup
   const handleAuth = async () => {
     try {
       if (authMode === 'signup') {
         // 1. Create the user
         const userCredential = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
-        
-        // 2. Update their profile with the name
+        // 2. Update their profile
         await updateProfile(userCredential.user, {
           displayName: authForm.name
         });
-
-        // --- THIS IS THE FIX ---
-        // Manually update our React state with the correct data,
-        // because the useEffect hook runs too early.
+        
+        // 3. Manually set state with the CORRECT name from the form
         setCurrentUser({
           uid: userCredential.user.uid,
           email: userCredential.user.email,
-          name: authForm.name 
+          name: authForm.name // <-- The correct name
         });
-        // --- END OF FIX ---
 
-      } else {
-        // Just sign in
-        await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
+      } else { // 'login'
+        // 1. Sign in
+        const userCredential = await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
+        
+        // 2. Manually set state with the user's saved name
+        setCurrentUser({
+          uid: userCredential.user.uid,
+          email: userCredential.user.email,
+          name: userCredential.user.displayName || userCredential.user.email.split('@')[0]
+        });
       }
       setShowAuthModal(false);
       setAuthForm({ email: '', password: '', name: '' });
-    } catch (error)
-{
+    } catch (error) {
       console.error('Auth error:', error);
       alert('Authentication failed: ' + error.message);
     }
   };
 
+  // 3. THIS IS THE NEW AUTH LOGIC
+  // We manually clear the user on logout
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      // Manually set state
+      setCurrentUser(null);
       setCurrentPage('home');
     } catch (error) {
       console.error('Logout error:', error);
@@ -131,7 +133,7 @@ const VolunteerHub = () => {
       setAuthMode('login');
       return;
     }
-
+    // (Rest of the function is the same...)
     const isRegistered = event.volunteers.includes(currentUser.uid);
     const isFull = event.volunteers.length >= event.maxVolunteers;
 
@@ -143,7 +145,6 @@ const VolunteerHub = () => {
       alert('This event is full!');
       return;
     }
-
     try {
       const eventDocRef = doc(db, "volunteer-events", eventId);
       await updateDoc(eventDocRef, {
@@ -161,6 +162,7 @@ const VolunteerHub = () => {
       setShowAuthModal(true);
       return;
     }
+    // (Rest of the function is the same...)
     try {
       await addDoc(eventsCollectionRef, {
         ...eventData,
@@ -177,6 +179,7 @@ const VolunteerHub = () => {
   };
 
   // --- Page Components ---
+  // (All page components are identical to before)
   
   const HomePage = () => (
     <div className="space-y-8">

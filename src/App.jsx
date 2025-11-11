@@ -10,8 +10,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updateProfile, // <-- 1. IMPORT FOR USERNAME
-  sendPasswordResetEmail // <-- 1. IMPORT FOR FORGOT PASSWORD
+  updateProfile,
+  sendPasswordResetEmail
 } from "firebase/auth";
 import { Calendar, MapPin, Users, Plus, LogIn, LogOut, User, CheckCircle } from 'lucide-react';
 
@@ -37,7 +37,6 @@ const VolunteerHub = () => {
         setCurrentUser({
           uid: user.uid,
           email: user.email,
-          // --- 2. USERNAME FIX ---
           // Reads their real name, or falls back to the email split
           name: user.displayName || user.email.split('@')[0]
         });
@@ -71,7 +70,6 @@ const VolunteerHub = () => {
         // 1. Create the user
         const userCredential = await createUserWithEmailAndPassword(auth, authForm.email, authForm.password);
         
-        // --- 3. USERNAME FIX ---
         // 2. Update their profile with the name
         await updateProfile(userCredential.user, {
           displayName: authForm.name
@@ -83,7 +81,8 @@ const VolunteerHub = () => {
       }
       setShowAuthModal(false);
       setAuthForm({ email: '', password: '', name: '' });
-    } catch (error) {
+    } catch (error)
+{
       console.error('Auth error:', error);
       alert('Authentication failed: ' + error.message);
     }
@@ -98,7 +97,6 @@ const VolunteerHub = () => {
     }
   };
 
-  // --- 4. FORGOT PASSWORD FUNCTION ---
   const handleForgotPassword = async () => {
     if (!authForm.email) {
       alert('Please enter your email in the email field first.');
@@ -358,12 +356,15 @@ const VolunteerHub = () => {
           <div className="modal-content form-page">
             <h2>{authMode === 'login' ? 'Login' : 'Sign Up'}</h2>
             <div className="space-y-4">
+              
               {authMode === 'signup' && (
                 <div>
                   <label>Name</label>
+                  {/* --- THIS IS THE FIX --- */}
                   <input type="text" value={authForm.name} onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}/>
                 </div>
               )}
+              
               <div>
                 <label>Email</label>
                 <input type="email" value={authForm.email} onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}/>
@@ -379,7 +380,6 @@ const VolunteerHub = () => {
             
             <hr style={{ margin: '1rem 0' }} />
 
-            {/* --- 5. FORGOT PASSWORD & SWITCH AUTH BUTTONS --- */}
             {authMode === 'login' ? (
               <>
                 <button onClick={handleForgotPassword} style={{ background: 'none', color: '#007bff', border: 'none', cursor: 'pointer', padding: '5px' }}>

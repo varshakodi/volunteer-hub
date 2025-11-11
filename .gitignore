@@ -1,0 +1,12 @@
+# SvelteKit/Vite specific
+.DS_Store
+.svelte-kit
+.vercel
+dist
+build
+
+# Node
+node_modules
+
+# Our secret keys
+src/firebase.js

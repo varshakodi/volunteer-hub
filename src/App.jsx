@@ -75,6 +75,16 @@ const VolunteerHub = () => {
           displayName: authForm.name
         });
 
+        // --- THIS IS THE FIX ---
+        // Manually update our React state with the correct data,
+        // because the useEffect hook runs too early.
+        setCurrentUser({
+          uid: userCredential.user.uid,
+          email: userCredential.user.email,
+          name: authForm.name 
+        });
+        // --- END OF FIX ---
+
       } else {
         // Just sign in
         await signInWithEmailAndPassword(auth, authForm.email, authForm.password);
@@ -360,7 +370,6 @@ const VolunteerHub = () => {
               {authMode === 'signup' && (
                 <div>
                   <label>Name</label>
-                  {/* --- THIS IS THE FIX --- */}
                   <input type="text" value={authForm.name} onChange={(e) => setAuthForm({ ...authForm, name: e.target.value })}/>
                 </div>
               )}

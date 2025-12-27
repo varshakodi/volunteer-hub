@@ -51,10 +51,14 @@ const VolunteerHub = () => {
     return () => unsubscribe(); 
   }, []);
   
-  // --- FILTERING LOGIC ---
+
+// --- FILTERING LOGIC (With Auto-Expire) ---
   const filteredEvents = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
     return events.filter(event => {
-      return !filterDate || event.date === filterDate;
+      const isFutureEvent = event.date >= today;
+      const matchesFilter = !filterDate || event.date === filterDate;
+      return isFutureEvent && matchesFilter;
     });
   }, [events, filterDate]);
 
@@ -231,7 +235,7 @@ const VolunteerHub = () => {
     );
   };
 
-  const EventsPage = () => {
+const EventsPage = () => {
     const eventsToDisplay = filteredEvents;
     return (
       <div>
@@ -239,16 +243,13 @@ const VolunteerHub = () => {
           <h2 style={{ fontSize: '2rem', margin: 0 }}>Upcoming Events</h2>
           <div className="filter-group">
             <Filter size={18} style={{ color: 'var(--primary)' }} />
-            <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} title="Filter by date" />
-            {filterDate && (
-                <button onClick={() => setFilterDate('')} style={{ border: 'none', background: 'rgba(255, 7, 58, 0.2)', color: 'var(--danger)', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>&times;</button>
-            )}
+            <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
+            {filterDate && <button onClick={() => setFilterDate('')} style={{ background: 'none', border: 'none', color: 'var(--danger)', fontSize: '1.2rem', cursor: 'pointer' }}>&times;</button>}
           </div>
         </div>
         {eventsToDisplay.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '4rem', background: 'var(--bg-med)', borderRadius: '12px', color: 'var(--text-muted)', border: '1px solid var(--bg-light)' }}>
-            <p>No events found for this date.</p>
-            <button onClick={() => setFilterDate('')} style={{ color: 'var(--primary)', background: 'none', border: 'none', marginTop: '1rem', cursor: 'pointer', textDecoration: 'underline' }}>Clear filter</button>
+          <div style={{ textAlign: 'center', padding: '4rem', background: 'var(--bg-med)', border: '1px solid #333' }}>
+            <p style={{ color: '#888' }}>No upcoming events found.</p>
           </div>
         ) : (
           <div>
@@ -256,25 +257,53 @@ const VolunteerHub = () => {
               const isRegistered = currentUser && event.volunteers.includes(currentUser.uid);
               const isFull = event.volunteers.length >= event.maxVolunteers;
               const spotsLeft = event.maxVolunteers - event.volunteers.length;
+              
               return (
                 <div key={event.id} className="event-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <h3>{event.title}</h3>
-                      <span style={{ fontSize: '0.85rem', color: 'var(--bg-dark)', background: 'var(--primary)', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: '700', textTransform: 'uppercase' }}>{event.organizer}</span>
-                    </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <h3>{event.title}</h3>
+                    <span style={{ color: 'black', background: 'var(--primary)', padding: '0.2rem 0.5rem', fontWeight: 'bold' }}>{event.organizer}</span>
                   </div>
                   <div className="event-details-grid">
-                    <p><Calendar size={16} className="icon" /> {new Date(event.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                    <p><MapPin size={16} className="icon" /> {event.location}</p>
-                    <p style={{ color: isFull ? 'var(--danger)' : 'var(--success)' }}><Users size={16} className="icon" style={{ color: isFull ? 'var(--danger)' : 'var(--success)' }}/> {spotsLeft} spots left</p>
+                    <p><Calendar size={16} className="icon"/> {event.date}</p>
+                    <p><MapPin size={16} className="icon"/> {event.location}</p>
+                    <p><Users size={16} className="icon"/> {spotsLeft} spots left</p>
                   </div>
-                  <p style={{ lineHeight: '1.6', marginBottom: '1.5rem', color: 'var(--text-muted)' }}>{event.description}</p>
-                  {isRegistered ? (
-                    <button disabled className="btn" style={{ background: 'rgba(57, 255, 20, 0.1)', color: 'var(--success)', border: '1px solid var(--success)', cursor: 'default' }}><CheckCircle size={18} />Registered</button>
-                  ) : (
-                    <button onClick={() => handleRegister(event.id, event)} disabled={isFull} className={isFull ? 'btn btn-danger' : 'btn btn-primary'}>{isFull ? 'Event Full' : 'Register Now'}</button>
-                  )}
+                  <p style={{ color: '#ccc', marginBottom: '1rem' }}>{event.description}</p>
+                  
+                  {/* --- BUTTON AREA --- */}
+                  <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                    {/* 1. If there is a link, show the Open Link button */}
+                    {event.eventLink && (
+                      <a 
+                        href={event.eventLink} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="btn btn-outline"
+                        style={{ textDecoration: 'none', justifyContent: 'center', flex: 1 }}
+                      >
+                        <Globe size={18}/> Open Link
+                      </a>
+                    )}
+
+                    {/* 2. The Standard Register Button */}
+                    {isRegistered ? (
+                      <button disabled className="btn" style={{ border: '1px solid var(--success)', color: 'var(--success)', background: 'transparent', flex: 1 }}>
+                        <CheckCircle size={18}/> Registered
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => handleRegister(event.id, event)} 
+                        disabled={isFull} 
+                        className={isFull ? 'btn btn-danger' : 'btn btn-primary'}
+                        style={{ flex: 1 }}
+                      >
+                        {isFull ? 'Full' : 'Register'}
+                      </button>
+                    )}
+                  </div>
+                  {/* ------------------- */}
+
                 </div>
               );
             })}
@@ -284,26 +313,51 @@ const VolunteerHub = () => {
     );
   };
 
-  const PostEventPage = () => {
-    const [formData, setFormData] = useState({ title: '', organizer: '', date: '', location: '', description: '', maxVolunteers: 10 });
+const PostEventPage = () => {
+    // Added 'eventLink' to the state
+    const [formData, setFormData] = useState({ 
+      title: '', organizer: '', date: '', location: '', description: '', maxVolunteers: 10, eventLink: '' 
+    });
+
     const handleSubmit = (e) => {
       e.preventDefault();
       if (!formData.title || !formData.date) return alert('Fill all fields');
       handlePostEvent(formData);
     };
+
     return (
       <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-        <h2 style={{ marginBottom: '1.5rem', color: 'var(--primary)' }}>Post New Event</h2>
-        <form onSubmit={handleSubmit} style={{ background: 'var(--bg-med)', padding: '2rem', borderRadius: '12px', border: '1px solid var(--bg-light)', boxShadow: 'var(--shadow)' }}>
-          <div className="form-field"><label>Event Title</label><input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })}/></div>
-          <div className="form-field"><label>Organizer</label><input type="text" value={formData.organizer} onChange={(e) => setFormData({ ...formData, organizer: e.target.value })}/></div>
+        <h2 style={{ marginBottom: '1.5rem', color: 'var(--primary)' }}>Post Mission</h2>
+        <form onSubmit={handleSubmit} style={{ background: 'var(--bg-med)', padding: '2rem', border: '1px solid #333' }}>
+          
+          <label>Title</label>
+          <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })}/>
+          
+          <label>Organizer</label>
+          <input type="text" value={formData.organizer} onChange={(e) => setFormData({ ...formData, organizer: e.target.value })}/>
+          
+          {/* --- NEW FIELD: REGISTRATION LINK --- */}
+          <label>Registration Link (Google Form / Zoom)</label>
+          <input 
+            type="url" 
+            placeholder="https://..." 
+            value={formData.eventLink} 
+            onChange={(e) => setFormData({ ...formData, eventLink: e.target.value })}
+          />
+          {/* ------------------------------------ */}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="form-field"><label>Date</label><input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })}/></div>
-            <div className="form-field"><label>Max Volunteers</label><input type="number" min="1" value={formData.maxVolunteers} onChange={(e) => setFormData({ ...formData, maxVolunteers: e.target.value })}/></div>
+            <div><label>Date</label><input type="date" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })}/></div>
+            <div><label>Max Volunteers</label><input type="number" min="1" value={formData.maxVolunteers} onChange={(e) => setFormData({ ...formData, maxVolunteers: e.target.value })}/></div>
           </div>
-          <div className="form-field"><label>Location</label><input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })}/></div>
-          <div className="form-field"><label>Description</label><textarea rows={4} value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })}/></div>
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}>Post Event</button>
+          
+          <label>Location</label>
+          <input type="text" value={formData.location} onChange={(e) => setFormData({ ...formData, location: e.target.value })}/>
+          
+          <label>Description</label>
+          <textarea rows={4} value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })}/>
+          
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>Deploy Event</button>
         </form>
       </div>
     );

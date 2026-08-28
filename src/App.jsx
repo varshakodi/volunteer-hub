@@ -9,9 +9,22 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  onAuthStateChanged
 } from "firebase/auth";
 import { Calendar, MapPin, Users, Plus, LogIn, LogOut, User, CheckCircle, Filter, Info, Heart, Globe, Zap } from 'lucide-react';
+
+// Only allow real web links — blocks "javascript:" and other dangerous URL schemes
+// that could run code if stored in Firestore and rendered as a link.
+const safeHttpUrl = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    return (url.protocol === 'https:' || url.protocol === 'http:') ? url.href : null;
+  } catch {
+    return null;
+  }
+};
 
 const VolunteerHub = () => {
   const [currentPage, setCurrentPage] = useState('home');
@@ -29,26 +42,38 @@ const VolunteerHub = () => {
 
   // --- UseEffect Hooks ---
   useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      setCurrentUser({
-        uid: user.uid,
-        email: user.email,
-        name: user.displayName || user.email.split('@')[0]
-      });
-    }
-    setLoading(false);
+    // Subscribe to auth changes so the UI always matches the real session
+    // (auth.currentUser is null while Firebase is still restoring the session).
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUser({
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || user.email.split('@')[0]
+        });
+      } else {
+        setCurrentUser(null);
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(eventsCollectionRef, (snapshot) => {
-      const loadedEvents = snapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id
-      }));
+      const loadedEvents = snapshot.docs.map(doc => {
+        const data = doc.data();
+        // Normalize untrusted document data so one malformed event can't crash the page
+        return {
+          ...data,
+          id: doc.id,
+          volunteers: Array.isArray(data.volunteers) ? data.volunteers : [],
+          maxVolunteers: Number.isInteger(data.maxVolunteers) && data.maxVolunteers > 0 ? data.maxVolunteers : 1
+        };
+      });
       setEvents(loadedEvents);
     });
-    return () => unsubscribe(); 
+    return () => unsubscribe();
   }, []);
   
 
@@ -113,7 +138,8 @@ const VolunteerHub = () => {
     }
     const isRegistered = event.volunteers.includes(currentUser.uid);
     if (isRegistered) return alert('Already registered!');
-    
+    if (event.volunteers.length >= event.maxVolunteers) return alert('Event is full!');
+
     try {
       const eventDocRef = doc(db, "volunteer-events", eventId);
       await updateDoc(eventDocRef, { volunteers: arrayUnion(currentUser.uid) });
@@ -126,16 +152,49 @@ const VolunteerHub = () => {
 
   const handlePostEvent = async (eventData) => {
     if (!currentUser) return setShowAuthModal(true);
+
+    const title = eventData.title.trim();
+    const organizer = eventData.organizer.trim();
+    const location = eventData.location.trim();
+    const description = eventData.description.trim();
+    const link = eventData.eventLink.trim();
+
+    if (!title || !organizer || !eventData.date || !location || !description) {
+      return alert('Please fill in all fields.');
+    }
+    if (title.length > 100 || organizer.length > 100 || location.length > 200 || description.length > 1000) {
+      return alert('One of the fields is too long.');
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(eventData.date)) {
+      return alert('Please pick a valid date.');
+    }
+
+    const maxVolunteers = parseInt(eventData.maxVolunteers, 10);
+    if (!Number.isInteger(maxVolunteers) || maxVolunteers < 1 || maxVolunteers > 1000) {
+      return alert('Max volunteers must be a number between 1 and 1000.');
+    }
+
+    const eventLink = link ? safeHttpUrl(link) : '';
+    if (link && !eventLink) {
+      return alert('Registration link must be a valid http:// or https:// URL.');
+    }
+
     try {
       await addDoc(eventsCollectionRef, {
-        ...eventData,
-        maxVolunteers: parseInt(eventData.maxVolunteers, 10),
+        title,
+        organizer,
+        date: eventData.date,
+        location,
+        description,
+        eventLink,
+        maxVolunteers,
         volunteers: [],
         createdBy: currentUser.uid,
       });
       setCurrentPage('events');
       alert('Event posted!');
     } catch (error) {
+      console.error(error);
       alert('Failed to post event.');
     }
   };
@@ -257,6 +316,8 @@ const EventsPage = () => {
               const isRegistered = currentUser && event.volunteers.includes(currentUser.uid);
               const isFull = event.volunteers.length >= event.maxVolunteers;
               const spotsLeft = event.maxVolunteers - event.volunteers.length;
+              // Re-validate at render time too, in case a bad link was written to the database directly
+              const eventUrl = safeHttpUrl(event.eventLink);
               
               return (
                 <div key={event.id} className="event-card">
@@ -273,10 +334,10 @@ const EventsPage = () => {
                   
                   {/* --- BUTTON AREA --- */}
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                    {/* 1. If there is a link, show the Open Link button */}
-                    {event.eventLink && (
-                      <a 
-                        href={event.eventLink} 
+                    {/* 1. If there is a safe link, show the Open Link button */}
+                    {eventUrl && (
+                      <a
+                        href={eventUrl}
                         target="_blank" 
                         rel="noopener noreferrer" 
                         className="btn btn-outline"
@@ -321,7 +382,6 @@ const PostEventPage = () => {
 
     const handleSubmit = (e) => {
       e.preventDefault();
-      if (!formData.title || !formData.date) return alert('Fill all fields');
       handlePostEvent(formData);
     };
 
